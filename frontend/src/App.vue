@@ -1,92 +1,106 @@
 <template>
-  <div>
-    <h2>Churn Prediction</h2>
-    <form @submit.prevent="submitForm">
-      <label>Credit Score:</label>
-      <input v-model="customer.credit_score" type="number" required />
-
-      <label>Geography (0 = France, 1 = Germany, 2 = Spain):</label>
-      <input v-model="customer.geography" type="number" required />
-
-      <label>Gender (0 = Male, 1 = Female):</label>
-      <input v-model="customer.gender" type="number" required />
-
-      <label>Age:</label>
-      <input v-model="customer.age" type="number" required />
-
-      <label>Tenure:</label>
-      <input v-model="customer.tenure" type="number" required />
-
-      <label>Balance:</label>
-      <input v-model="customer.balance" type="number" required />
-
-      <label>Number of Products:</label>
-      <input v-model="customer.num_of_products" type="number" required />
-
-      <label>Has Credit Card (0 = No, 1 = Yes):</label>
-      <input v-model="customer.has_credit_card" type="number" required />
-
-      <label>Is Active Member (0 = No, 1 = Yes):</label>
-      <input v-model="customer.is_active_member" type="number" required />
-
-      <label>Estimated Salary:</label>
-      <input v-model="customer.estimated_salary" type="number" required />
-
+  <div id="app">
+    <h1>Churn Prediction</h1>
+    <form @submit.prevent="handlePredict">
+      <label>Customer ID: <input v-model.number="customer.CustomerID" type="number" readonly /></label>
+      <label>Age: <input v-model.number="customer.Age" type="number" required /></label>
+      <label>Gender:
+        <select v-model="customer.Gender" required>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+        </select>
+      </label>
+      <label>Tenure: <input v-model.number="customer.Tenure" type="number" required /></label>
+      <label>Usage Frequency: <input v-model.number="customer.Usage_Frequency" type="number" required /></label>
+      <label>Support Calls: <input v-model.number="customer.Support_Calls" type="number" required /></label>
+      <label>Payment Delay: <input v-model.number="customer.Payment_Delay" type="number" required /></label>
+      <label>Subscription Type:
+        <select v-model="customer.Subscription_Type" required>
+          <option value="Basic">Basic</option>
+          <option value="Standard">Standard</option>
+          <option value="Premium">Premium</option>
+        </select>
+      </label>
+      <label>Contract Length:
+        <select v-model="customer.Contract_Length" required>
+          <option value="Monthly">Monthly</option>
+          <option value="Quarterly">Quarterly</option>
+          <option value="Annual">Annual</option>
+        </select>
+      </label>
+      <label>Total Spend: <input v-model.number="customer.Total_Spend" type="number" step="0.01" required /></label>
+      <label>Last Interaction: <input v-model.number="customer.Last_Interaction" type="number" required /></label>
       <button type="submit">Predict</button>
     </form>
 
-    <div v-if="result">
-      <h3>Prediction Result:</h3>
-      <p>Churn: {{ result.churn }}</p>
-      <p>Probability: {{ (result.probability * 100).toFixed(2) }}%</p>
+    <div v-if="result !== null">
+      <h2>Prediction Result:</h2>
+      <p>Churn: {{ result.churn ? 'Yes' : 'No' }}</p>
     </div>
   </div>
 </template>
 
 <script>
-// Import the API client
-import apiClient from './apiClient';
+import axios from "axios";
 
 export default {
   data() {
     return {
       customer: {
-        credit_score: null,
-        geography: null,
-        gender: null,
-        age: null,
-        tenure: null,
-        balance: null,
-        num_of_products: null,
-        has_credit_card: null,
-        is_active_member: null,
-        estimated_salary: null,
+        CustomerID: Math.floor(Math.random() * 10000),  // Randomly generated Customer ID
+        Age: null,
+        Gender: "",
+        Tenure: null,
+        Usage_Frequency: null,
+        Support_Calls: null,
+        Payment_Delay: null,
+        Subscription_Type: "",
+        Contract_Length: "",
+        Total_Spend: null,
+        Last_Interaction: null,
       },
       result: null,
     };
   },
   methods: {
-    async submitForm() {
+    async handlePredict() {
       try {
-        // Check if customer data is valid
-        if (Object.values(this.customer).some(val => val === null || val === undefined)) {
-          console.error("Please fill in all the fields.");
-          return;
-        }
-
-        // Log customer data before sending
-        console.log("Sending data to API:", this.customer);
-
-        // Call API to predict churn
-        const response = await apiClient.predictChurn(this.customer);
-        this.result = response.data;  // Update result with prediction
-
-        console.log("Prediction Result:", this.result);  // Log prediction result
+        const response = await axios.post("https://super-duper-space-robot-579w4pjvwww345p5-8000.app.github.dev/predict", this.customer);
+        this.result = response.data; // Save prediction result
       } catch (error) {
-        console.error("Error predicting churn:", error);
+        console.error("Error making prediction:", error);
+        this.result = { churn: null }; // Handle errors gracefully
       }
     },
   },
 };
 </script>
 
+<style>
+#app {
+  font-family: Avenir, Helvetica, Arial, sans-serif;
+  text-align: center;
+  margin: 20px;
+}
+form {
+  display: flex;
+  flex-direction: column;
+  max-width: 400px;
+  margin: 0 auto;
+}
+label {
+  margin-bottom: 10px;
+}
+button {
+  margin-top: 20px;
+  padding: 10px 20px;
+  background-color: #42b983;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+button:hover {
+  background-color: #369972;
+}
+</style>

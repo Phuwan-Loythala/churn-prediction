@@ -5,29 +5,40 @@ from sklearn.preprocessing import LabelEncoder
 import joblib
 
 # Load your dataset
-data = pd.read_csv("churn_data.csv")
+data = pd.read_csv("customer_churn_master.csv")
 
 # Preprocessing: Convert categorical columns to numeric
-label_encoder = LabelEncoder()
-data["Geography"] = label_encoder.fit_transform(data["Geography"])
-data["Gender"] = label_encoder.fit_transform(data["Gender"])
+label_encoder_geo = LabelEncoder()
+label_encoder_gender = LabelEncoder()
+label_encoder_subscription = LabelEncoder()
+label_encoder_contract = LabelEncoder()
+
+data["Geography"] = label_encoder_geo.fit_transform(data["Geography"])
+data["Gender"] = label_encoder_gender.fit_transform(data["Gender"])
+data["Subscription Type"] = label_encoder_subscription.fit_transform(data["Subscription Type"])
+data["Contract Length"] = label_encoder_contract.fit_transform(data["Contract Length"])
+
+# Check if target column exists
+if "Churn" not in data.columns:
+    raise ValueError("Target column 'Churn' is missing from the dataset.")
 
 # Features and target
 X = data[
     [
-        "CreditScore",
-        "Geography",
-        "Gender",
+        "CustomerId",
         "Age",
+        "Gender",
         "Tenure",
-        "Balance",
-        "NumOfProducts",
-        "HasCrCard",
-        "IsActiveMember",
-        "EstimatedSalary",
+        "Usage_Frequency",
+        "Support_Calls",
+        "Payment_Delay",
+        "Subscription_Type",
+        "Contract_Length",
+        "Total_Spend",
+        "Last_Interaction",
     ]
 ]
-y = data["Exited"]
+y = data["Churn"]
 
 # Train/test split
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -37,6 +48,6 @@ model = RandomForestClassifier(random_state=42)
 model.fit(X_train, y_train)
 
 # Save the model
-joblib.dump(model, "model/churn_model.pkl")
+joblib.dump(model, "gradient_boosting.pkcls")
 
-print("Model training complete and saved as churn_model.pkl")
+print("Model training complete and saved as gradient_boosting.pkcls")
