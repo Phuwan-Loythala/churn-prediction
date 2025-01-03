@@ -7,7 +7,7 @@ from datetime import datetime
 def authenticate_google_sheets():
     # กำหนด scope สำหรับการเข้าถึง Google Sheets API
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name('path_to_your_service_account_key.json', scope)
+    creds = ServiceAccountCredentials.from_json_keyfile_name('app/service_account.json', scope)
     client = gspread.authorize(creds)
     return client
 
@@ -15,11 +15,10 @@ def authenticate_google_sheets():
 def log_prediction_to_sheet(customer_data, prediction, confidence):
     # เข้าถึง Google Sheets ด้วย gspread
     client = authenticate_google_sheets()
-    sheet = client.open('Customer_Churn_Log').sheet1  # เปิด Google Sheet ที่มีชื่อว่า 'Customer_Churn_Log'
+    sheet = client.open_by_key('1PMKShDQb9HQ1l0KbMjUPUxeSWN08BKP2xjqoMyPw5xE').sheet1  # เปิด Google Sheet ที่มีชื่อว่า 'Customer_Churn_Log'
 
     # ข้อมูลที่ต้องการบันทึก
     log_data = {
-        "Customer_ID": customer_data['Customer_ID'],
         "Age": customer_data['Age'],
         "Gender": customer_data['Gender'],
         "Tenure": customer_data['Tenure'],

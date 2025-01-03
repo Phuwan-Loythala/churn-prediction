@@ -8,21 +8,22 @@ import openai
 import time
 from log_to_sheets import log_prediction_to_sheet
 
-# OpenAI API Key
-OPENAI_API_KEY = "sk-your-api-key"  # ใส่ API Key ของคุณที่นี่
+# Correct initialization
+openai.api_key = "LA-6b1913a2da51429a888dc2c7d319df5d42f1bd6a943840b390190297f3e49e68"
 
-# ฟังก์ชันส่งคำขอไปยัง OpenAI ChatGPT API
-def query_chatgpt_api(prompt, api_key):
-    openai.api_key = api_key
+# ฟังก์ชันเรียกใช้ ChatGPT API
+def query_chatgpt_api(prompt):
     try:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": "You are a helpful assistant that provides explanations in Thai."},
-                      {"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that provides explanations in Thai."},
+                {"role": "user", "content": prompt},
+            ],
             temperature=0.7,
-            max_tokens=1500
+            max_tokens=1500,
         )
-        return response.choices[0].message.content
+        return response['choices'][0]['message']['content']
     except Exception as e:
         return f"ข้อผิดพลาด: {e}"
 
@@ -83,7 +84,7 @@ def explain_prediction_with_chatgpt(prediction, confidence, input_data):
         f"กรุณาอธิบายเหตุผลและให้คำแนะนำสำหรับลูกค้ารายนี้เป็นภาษาไทย"
     )
 
-    explanation = query_chatgpt_api(explanation_prompt, OPENAI_API_KEY)
+    explanation = query_chatgpt_api(explanation_prompt)
     return explanation
 
 # โหลดข้อมูลและโมเดล
@@ -101,6 +102,7 @@ except Exception as e:
     st.error(f"Error loading data or model: {e}")
     st.stop()
 
+# การตั้งค่าหน้า Streamlit
 st.set_page_config(page_title="พยากรณ์การสูญเสียลูกค้า", layout="centered")
 st.title("พยากรณ์การสูญเสียลูกค้า")
 
@@ -111,7 +113,16 @@ option = st.radio("เลือกวิธีการทำนาย:", ["ฟ�
 if option == "ฟอร์มทำนายลูกค้าเดียว":
     st.subheader("ทำนายการสูญเสียลูกค้าจากฟอร์ม")
     with st.form("churn_form"):
-        # ... (ส่วนของโค้ดในฟอร์ม)
+        age = st.number_input("อายุ", min_value=0, max_value=120, step=1)
+        gender = st.selectbox("เพศ", options=["Male", "Female"])
+        tenure = st.number_input("ระยะเวลาใช้งาน (เดือน)", min_value=0, step=1)
+        usage_frequency = st.number_input("ความถี่การใช้งาน (ครั้ง/เดือน)", min_value=0, step=1)
+        support_calls = st.number_input("จำนวนครั้งที่ติดต่อฝ่ายสนับสนุน", min_value=0, step=1)
+        payment_delay = st.number_input("การชำระเงินล่าช้า (วัน)", min_value=0, step=1)
+        subscription_type = st.selectbox("ประเภทสมาชิก", options=["Basic", "Standard", "Premium"])
+        contract_length = st.selectbox("ระยะเวลาสัญญา", options=["Monthly", "Quarterly", "Yearly"])
+        total_spend = st.number_input("ยอดใช้จ่ายรวม (บาท)", min_value=0.0, step=100.0)
+        last_interaction = st.number_input("วันที่ใช้งานล่าสุด (วัน)", min_value=0, step=1)
 
         submitted = st.form_submit_button("เริ่มการทำนาย")
 
@@ -141,7 +152,7 @@ if option == "ฟอร์มทำนายลูกค้าเดียว":
                 st.error(f"The customer is likely to churn with a confidence of {confidence * 100:.2f}%.")
             else:
                 st.success(f"The customer is unlikely to churn with a confidence of {confidence * 100:.2f}%.")
-            
+
             explanation = explain_prediction_with_chatgpt(prediction, confidence, input_data)
             st.write("Explanation:")
             st.write(explanation)
