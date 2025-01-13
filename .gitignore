@@ -2,3 +2,4 @@
 .env
 config.toml
 servacc.json
+/app/service_account.json
