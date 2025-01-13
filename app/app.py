@@ -5,59 +5,100 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 import requests
-import os
-from google.oauth2 import service_account
-from google.auth.transport.requests import Request
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import logging
+from datetime import datetime
+import toml
+import pytz
 
-# Set up Google Cloud credentials and API scopes
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "app/service_account.json"
-credentials = service_account.Credentials.from_service_account_file(
-    'app/service_account.json',
-    scopes=["https://www.googleapis.com/auth/generative-language.retriever"]
-)
+# Load the .toml file
+config = toml.load('app/config/config.toml')
+# Set up logging configuration
+logging.basicConfig(filename='app.log', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Refresh the credentials
-credentials.refresh(Request())
-access_token = credentials.token
+# Access the configuration values
+API_KEY = config['secrets']['API_KEY']
+GOOGLE_CREDENTIALS_PATH = config['secrets']['GOOGLE_CREDENTIALS_PATH']
+SHEET_ID = config['secrets']['SHEET_ID']
+URL = config['secrets']['URL']
 
-# Headers for API requests
+# Headers for Typhoon API requests
 headers = {
-    "Authorization": f"Bearer {access_token}",
+    "Authorization": f"Bearer {API_KEY}",
     "Content-Type": "application/json",
 }
 
-# Log predictions to Google Sheets (Placeholder function)
 def log_prediction_to_sheet(input_data, prediction, confidence):
-    # Dummy implementation - replace with your actual logic
-    st.write("Logged prediction to Google Sheets.")
-
-# Replace with your Gemini API Key
-GEMINI_API_KEY = "AIzaSyDPLCNH1fxkc-xYck4njQOz3WsCjWL_5q0"
-
-# ... (rest of the code)
-
-def query_gemini_api(prompt):
-    """Query Gemini API for explanations."""
     try:
-        headers = {
-            "Authorization": f"Bearer {GEMINI_API_KEY}",
-            "Content-Type": "application/json",
-        }
-        data = {
-            # ... (rest of the data)
-        }
-        response = requests.post(
-            "https://generativelanguage.googleapis.com/v1beta2/models/gemini-1.5-flash:generateText",
-            json=data,
-            headers=headers,
-        )
-        response.raise_for_status()  # Raise an exception for error HTTP statuses
-        result = response.json()
-        return result["candidates"][0]["output"] if "candidates" in result else "No response."
-    except requests.exceptions.HTTPError as e:
-        return f"Error querying Gemini API: {e}. Please check your API key and network connection."
+        # Define the scope
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+
+        # Load credentials from JSON key file
+        credentials = ServiceAccountCredentials.from_json_keyfile_name("app/config/servacc.json", scope)
+        client = gspread.authorize(credentials)
+
+        # Open the Google Sheet
+        sheet = client.open_by_key("1PMKShDQb9HQ1l0KbMjUPUxeSWN08BKP2xjqoMyPw5xE").sheet1
+
+        # Define Bangkok timezone
+        bangkok_tz = pytz.timezone('Asia/Bangkok')
+
+        # Get the current time in Bangkok timezone
+        local_time = datetime.now(bangkok_tz)
+
+        # Format the timestamp
+        timestamp = local_time.strftime('%Y-%m-%d %H:%M:%S')        
+
+        # Log data to the sheet with correct column order
+        # Modify the confidence format to ensure it's displayed correctly
+        row = [
+            input_data.get("Age"),
+            input_data.get("Gender"),
+            input_data.get("Tenure"),
+            input_data.get("Usage_Frequency"),
+            input_data.get("Support_Calls"),
+            input_data.get("Payment_Delay"),
+            input_data.get("Subscription_Type"),
+            input_data.get("Contract_Length"),
+            input_data.get("Total_Spend"),
+            input_data.get("Last_Interaction"),
+            "Churn" if prediction == 1 else "Not Churn",
+            confidence,
+            timestamp
+        ]
+        sheet.append_row(row)
+        st.success("Data logged successfully!")
+        logging.info(f"Logged prediction for customer: {input_data['Age']}, Prediction: {'Churn' if prediction == 1 else 'Not Churn'}")
+    except gspread.exceptions.APIError as e:
+        logging.error(f"Google Sheets API error: {e}")
+        st.error(f"Google Sheets API error: {e}")
     except Exception as e:
-        return f"Unexpected error: {e}"
+        logging.error(f"Unexpected error in logging to Google Sheets: {e}")
+        st.error(f"Unexpected error: {e}")
+
+def query_typhoon_api(prompt):
+    """Query Typhoon Thai GPT API for explanations."""
+    try:
+        payload = {
+            "model": "typhoon-v1.5x-70b-instruct",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 1500,
+            "temperature": 0.7,
+        }
+        response = requests.post(URL, headers=headers, json=payload)
+        response.raise_for_status()  # Raise error for non-200 responses
+        result = response.json()
+        logging.info(f"Typhoon API response received successfully: {result}")
+        return result["choices"][0]["message"]["content"]
+    except requests.exceptions.HTTPError as e:
+        logging.error(f"API HTTPError: {e}")
+        st.error(f"API HTTPError: {e}")
+        return f"API HTTPError: {e}"
+    except Exception as e:
+        logging.error(f"Unexpected Error in API request: {e}")
+        st.error(f"Unexpected Error: {e}")
+        return f"Unexpected Error: {e}"
 
 def fit_label_encoder_on_data(data):
     """Encode categorical data."""
@@ -79,16 +120,22 @@ def safe_transform(encoder, value):
 
 def predict_churn_single(input_data, label_encoders, model, X):
     """Make predictions for a single customer."""
-    input_df = pd.DataFrame([input_data])
-    for col, encoder in label_encoders.items():
-        input_df[col] = safe_transform(encoder, input_df[col].iloc[0])
-    input_df = input_df[X.columns]
-    prediction = model.predict(input_df)[0]
-    confidence = max(model.predict_proba(input_df)[0])
-    return prediction, confidence
+    try:
+        input_df = pd.DataFrame([input_data])
+        for col, encoder in label_encoders.items():
+            input_df[col] = safe_transform(encoder, input_df[col].iloc[0])
+        input_df = input_df[X.columns]
+        prediction = model.predict(input_df)[0]
+        confidence = max(model.predict_proba(input_df)[0])
+        logging.info(f"Prediction made for input data: {input_data}, Prediction: {'Churn' if prediction == 1 else 'Not Churn'}, Confidence: {confidence * 100:.2f}%")
+        return prediction, confidence
+    except Exception as e:
+        logging.error(f"Error in prediction: {e}")
+        st.error(f"Error in prediction: {e}")
+        return None, None
 
-def explain_prediction_with_gemini(prediction, confidence, input_data):
-    """Generate an explanation for the prediction."""
+def explain_prediction_with_typhoon(prediction, confidence, input_data):
+    """Generate an explanation for the prediction using Typhoon Thai GPT."""
     details = (
         f"อายุ: {input_data['Age']} ปี, เพศ: {input_data['Gender']}, "
         f"ระยะเวลาใช้งาน: {input_data['Tenure']} เดือน, "
@@ -106,7 +153,8 @@ def explain_prediction_with_gemini(prediction, confidence, input_data):
         f"ข้อมูลของลูกค้ามีดังนี้: {details}. "
         f"กรุณาอธิบายเหตุผลและให้คำแนะนำสำหรับลูกค้ารายนี้เป็นภาษาไทย"
     )
-    return query_gemini_api(explanation_prompt)
+    return query_typhoon_api(explanation_prompt)
+
 
 # Load data and train model
 try:
@@ -117,7 +165,7 @@ try:
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     model = RandomForestClassifier()
     model.fit(X_train, y_train)
-    joblib.dump(model, 'randomproject1.pkcls')
+    joblib.dump(model, 'model/randomforest.pkcls')
 except Exception as e:
     st.error(f"Error loading data or model: {e}")
     st.stop()
@@ -146,40 +194,29 @@ if option == "ฟอร์มทำนายลูกค้าเดียว":
             "Last_Interaction": st.number_input("วันที่ใช้งานล่าสุด (วัน)", 0, step=1),
         }
         submitted = st.form_submit_button("เริ่มการทำนาย")
+        
         if submitted:
-            with st.spinner("กำลังประมวลผล..."):
-                prediction, confidence = predict_churn_single(input_data, label_encoders, model, X)
-                if prediction == 1:
-                    st.error(f"ลูกค้ามีแนวโน้มจะเลิกใช้บริการ ({confidence * 100:.2f}%).")
-                else:
-                    st.success(f"ลูกค้าไม่น่าจะเลิกใช้บริการ ({confidence * 100:.2f}%).")
-                explanation = explain_prediction_with_gemini(prediction, confidence, input_data)
-                st.write("คำอธิบาย:")
-                st.write(explanation)
+            prediction, confidence = predict_churn_single(input_data, label_encoders, model, X)
+            if prediction is not None:
+                explain_text = explain_prediction_with_typhoon(prediction, confidence, input_data)
+                st.write(explain_text)
                 log_prediction_to_sheet(input_data, prediction, confidence)
 
-elif option == "อัปโหลดไฟล์ CSV":
-    st.subheader("ทำนายการสูญเสียลูกค้า (อัปโหลดไฟล์ CSV)")
-    uploaded_file = st.file_uploader("อัปโหลดไฟล์ CSV", type=["csv"])
+# Handle CSV upload for multiple predictions
+if option == "อัปโหลดไฟล์ CSV":
+    uploaded_file = st.file_uploader("เลือกไฟล์ CSV", type="csv")
     if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
-        required_columns = ["Age", "Gender", "Tenure", "Usage_Frequency", "Support_Calls",
-                            "Payment_Delay", "Subscription_Type", "Contract_Length", "Total_Spend", "Last_Interaction"]
-        if not all(col in df.columns for col in required_columns):
-            st.error("ไฟล์ CSV ไม่ครบถ้วน กรุณาตรวจสอบคอลัมน์.")
-        else:
-            predictions, confidences = [], []
-            for _, row in df.iterrows():
-                input_data = row.to_dict()
-                prediction, confidence = predict_churn_single(input_data, label_encoders, model, X)
-                predictions.append("Churn" if prediction == 1 else "Not Churn")
-                confidences.append(confidence * 100)
-            df["Churn Prediction"] = predictions
-            df["Confidence %"] = confidences
-            st.dataframe(df)
-            st.download_button(
-                label="ดาวน์โหลดผลลัพธ์",
-                data=df.to_csv(index=False),
-                file_name="churn_predictions.csv",
-                mime="text/csv"
-            )
+        # Read CSV file
+        try:
+            input_data_csv = pd.read_csv(uploaded_file)
+            st.write(input_data_csv)
+
+            # Preprocess and predict for each row in the CSV
+            for index, row in input_data_csv.iterrows():
+                prediction, confidence = predict_churn_single(row.to_dict(), label_encoders, model, X)
+                if prediction is not None:
+                    explain_text = explain_prediction_with_typhoon(prediction, confidence, row.to_dict())
+                    st.write(explain_text)
+                    log_prediction_to_sheet(row.to_dict(), prediction, confidence)
+        except Exception as e:
+            st.error(f"Error processing CSV file: {e}")

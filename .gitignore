@@ -1,0 +1,4 @@
+# Ignore API keys and credentials files
+.env
+config.toml
+servacc.json
