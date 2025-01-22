@@ -2,3 +2,4 @@
 .env
 config.toml
 servacc.json
+model/random_forest.pkcls
