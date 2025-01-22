@@ -23,9 +23,6 @@ URL = config['secrets']['URL']
 # Streamlit page configuration (MUST BE FIRST Streamlit command)
 st.set_page_config(page_title="Customer Churn Prediction", layout="centered")
 
-# Set up logging configuration
-logging.basicConfig(filename='app.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
 # Cache dataset loading
 @st.cache_data
 def load_data():
